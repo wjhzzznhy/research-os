@@ -1,0 +1,241 @@
+@import "tailwindcss";
+
+/* 定义自定义主题变量 */
+@theme { 
+  --color-primary: #1a5c3a; /* PDF source: 10 - 深绿色 */
+  --color-primary-hover: #166534; /* PDF source: 10 - 渐变起始 */
+  --color-primary-active: #14532d; /* PDF source: 10 - 渐变结束 */
+  --color-primary-50: #f0fdf4;
+  --color-primary-100: #dcfce7;
+  --color-primary-200: #bbf7d0;
+  --color-primary-300: #86efac;
+  --color-primary-400: #4ade80;
+  --color-primary-500: #1a5c3a;
+  --color-primary-600: #166534;
+  --color-primary-700: #14532d;
+  --color-primary-800: #0f4024;
+  --color-primary-900: #052e16;
+  --color-accent: #1a5c3a;
+}
+
+/* Ant Design 样式覆盖 (如果需要匹配 Tailwind 变量) */
+:root {
+  --ant-primary-color: #1a5c3a !important;
+  --ant-primary-color-hover: #166534 !important;
+  --ant-primary-color-active: #14532d !important;
+  --ant-primary-color-outline: rgba(26, 92, 58, 0.1) !important;
+}
+
+/* 导航栏自定义阴影：向右偏移，带一点主色 #1a5c3a 的绿意 */
+.sidebar-shadow {
+  /* 增加透明度从 0.06 到 0.12，并微调偏移量 */
+  box-shadow: 2px 0 10px rgba(26, 92, 58, 0.12) ;
+  /* 确保在层级上高于右侧内容 */
+  z-index: 50; 
+}
+
+/* 定义高级感浅绿渐变背景 */
+.bg-mesh-green {
+  background-color: #ffffff; /* 基础底色为白色 */
+  background-image: 
+    /* 1. 左上角绿光光晕 - 核心光源 */
+    radial-gradient(at 0% 0%, rgba(209, 250, 229, 0.6) 0%, transparent 45%),
+    /* 2. 右上角淡绿光晕 - 辅助光源 */
+    radial-gradient(at 100% 0%, rgba(236, 253, 245, 0.5) 0%, transparent 40%),
+    /* 3. 极细微的右下角过渡，确保不突兀 */
+    radial-gradient(at 80% 80%, rgba(240, 253, 244, 0.2) 0%, transparent 30%);
+  
+  background-size: cover;
+  background-repeat: no-repeat;
+  /* 确保背景随容器高度自适应，不产生断层 */
+  background-attachment: scroll; 
+}
+
+body {
+  @apply bg-white text-gray-800;
+}
+
+/* ========== Large Page Styles (from ai-platform) ========== */
+
+.gradient-text {
+  background: linear-gradient(135deg, #1a5c3a 0%, #166534 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.glass-effect {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.card-hover {
+  transition: all 0.3s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(26, 92, 58, 0.15);
+}
+
+.nav-item {
+  position: relative;
+  transition: color 0.2s ease;
+}
+
+.nav-item::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  width: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #1a5c3a, #166534);
+  transition: all 0.3s ease;
+  transform: translateX(-50%);
+}
+
+.nav-item:hover::after {
+  width: 100%;
+}
+
+.hero-gradient {
+  background: linear-gradient(135deg, #1a5c3a 0%, #166534 50%, #14532d 100%);
+}
+
+.feature-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+}
+
+.search-input {
+  transition: all 0.3s ease;
+}
+
+.search-input:focus {
+  box-shadow: 0 0 0 3px rgba(26, 92, 58, 0.2);
+}
+
+.floating-btn {
+  position: fixed;
+  right: 20px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.floating-btn:hover {
+  transform: scale(1.1);
+}
+
+.sidebar-tool {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  background: white;
+  border-radius: 12px 0 0 12px;
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.1);
+  padding: 12px 8px;
+  z-index: 50;
+}
+
+.pulse-animation {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.slide-up {
+  animation: slideUp 0.5s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 统一处理模型选择下拉框(ModelSelect)样式 */
+.model-select-dropdown {
+  /* 列表项圆角与边距 */
+  & .ant-select-item {
+    margin: 4px 6px !important;
+    border-radius: 8px !important;
+    min-height: 32px !important;
+    display: flex !important;
+    align-items: center !important;
+  }
+
+  /* 默认文字颜色 */
+  & .ant-select-item-option-content {
+    color: #4b5563 !important;
+    font-size: 14px !important;
+  }
+
+  /* 悬停态背景 */
+  & .ant-select-item-option-active {
+    background-color: var(--color-primary-50) !important;
+  }
+
+  /* 选中态样式：文字变绿，背景透明 (解决你看到的灰色块问题) */
+  & .ant-select-item-option-selected {
+    background-color: transparent !important; /* 关键：移除选中时的背景色 */
+    color: var(--color-primary) !important;
+    font-weight: 700 !important;
+  }
+}
+
+/* 联网/离线Switch (ModeSelector) */
+.custom-compact-switch.ant-switch {
+  min-width: 54px !important; /* 锁定 54px 宽度，解决离线飞出去的问题 */
+  height: 20px !important;
+  background-color: #cbd5e1 !important;
+  border: none !important;
+}
+
+.custom-compact-switch.ant-switch-checked {
+  background-color: var(--color-primary) !important;
+}
+
+/* 滑块圆点：稍微调小 1px，能让整体看起来更精致，不挤文字 */
+.custom-compact-switch .ant-switch-handle {
+  width: 14px !important;
+  height: 14px !important;
+  top: 3px !important;
+  z-index: 1 !important; /* 确保它在文字层下方 */
+}
+
+/* 选中态圆点：精准靠右 */
+.custom-compact-switch.ant-switch-checked .ant-switch-handle {
+  inset-inline-start: calc(100% - 17px) !important;
+}
+
+/* 彻底关闭 Antd 的内部占位 */
+.custom-compact-switch .ant-switch-inner {
+  display: none !important;
+}

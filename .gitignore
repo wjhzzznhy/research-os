@@ -1,0 +1,128 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+.pnpm-store/
+
+# Build outputs
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# Turbo
+.turbo/
+
+# Testing
+coverage/
+.nyc_output/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+*.log
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+.trae/
+.qoder/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# Misc
+*.pem
+.vercel
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker volumes & local data
+volumes/
+*.local
+
+# SSL/TLS certificates & private keys
+*.crt
+*.key
+*.p12
+*.jks
+docker/gateway/certs/
+
+# Archive files
+*.7z
+*.zip
+*.rar
+*.tar
+*.tar.gz
+*.tar.bz2
+*.tgz
+
+# Generated data
+apps/api/data/
+
+# Large asset directories (use object storage for deployment)
+excalidraw_all_with_description/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.cache
+
+# Model files (large binaries)
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.h5
+*.onnx
+*.gguf
+
+# Exceptions - keep model configs
+!models/**/*.json
+!models/**/*.txt
+!models/**/*.md
+!models/**/README*
+!models/**/gitattributes
+!models/**/*.jinja
+!models/**/*.config.json

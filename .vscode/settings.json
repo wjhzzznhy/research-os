@@ -1,0 +1,10 @@
+{
+  "css.lint.unknownAtRules": "ignore",
+  "typescript.tsserver.exclude": [
+    "**/excalidraw-master/**",
+    "**/packages/vendor/excalidraw/examples/**",
+    "**/packages/vendor/excalidraw/dev-docs/**",
+    "**/packages/vendor/excalidraw/excalidraw-app/**",
+    "**/packages/vendor/excalidraw/dist/**"
+  ]
+}

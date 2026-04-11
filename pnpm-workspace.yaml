@@ -1,0 +1,14 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "packages/vendor/excalidraw/packages/common"
+  - "packages/vendor/excalidraw/packages/math"
+  - "packages/vendor/excalidraw/packages/element"
+  - "packages/vendor/excalidraw/packages/utils"
+  - "packages/vendor/excalidraw/packages/excalidraw"
+  - "!apps/third-party/**/*"
+
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - unrs-resolver

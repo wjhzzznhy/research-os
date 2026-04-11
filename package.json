@@ -1,0 +1,48 @@
+{
+  "name": "research-os",
+  "version": "1.0.0",
+  "description": "Research OS - AI-powered research platform",
+  "private": true,
+  "scripts": {
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "clean": "turbo clean && rimraf node_modules",
+    "dev": "docker-compose up -d --build",
+    "dev:infra": "docker-compose up -d postgres redis rustfs",
+    "dev:local": "turbo dev",
+    "prod": "docker-compose -f docker-compose.prod.yml up -d --build",
+    "prod:down": "docker-compose -f docker-compose.prod.yml down",
+    "build:sdk": "cd packages/sdk && pnpm build"
+  },
+  "keywords": ["research", "ai", "llm", "knowledge-management"],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.26.1",
+  "pnpm": {
+    "overrides": {
+      "react": "19.2.3",
+      "react-dom": "19.2.3"
+    }
+  },
+  "devDependencies": {
+    "@braintree/sanitize-url": "6.0.2",
+    "@excalidraw/common": "workspace:0.18.0",
+    "@excalidraw/element": "workspace:0.18.0",
+    "@excalidraw/math": "workspace:0.18.0",
+    "dotenv": "16.0.1",
+    "es6-promise-pool": "2.5.0",
+    "esbuild": "^0.19.10",
+    "esbuild-sass-plugin": "^2.16.0",
+    "fonteditor-core": "2.4.0",
+    "nanoid": "3.3.3",
+    "rimraf": "^5.0.0",
+    "roughjs": "4.6.6",
+    "tinycolor2": "1.6.0",
+    "wawoff2": "2.0.1",
+    "which": "4.0.0",
+    "typescript": "^5.9.3",
+    "turbo": "^2.7.0"
+  }
+}

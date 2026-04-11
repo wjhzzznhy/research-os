@@ -1,0 +1,188 @@
+'use client';
+
+import { useCallback } from 'react';
+import fixUnclosed from '@/lib/smart-draw/fixUnclosed';
+import { SYSTEM_PROMPT, USER_PROMPT_TEMPLATE } from '@/lib/smart-draw/prompts/drawio';
+import { drawioProcessor } from '@/lib/smart-draw/code-processor';
+import { useEngineShared } from './useEngineShared';
+import { IconAsset } from '@/types/api';
+
+/**
+ * Draw.io 引擎 Hook
+ * 使用模板方法处理消息发送，只定义特定的后处理逻辑
+ */
+export function useDrawioEngine() {
+  // 使用共享的引擎逻辑
+  const shared = useEngineShared();
+
+  const {
+    usedCode,
+    setUsedCode,
+    messages,
+    isGenerating,
+    streamingContent,
+    conversationId,
+    lastError,
+    handleSendMessageTemplate,
+    handleRetryMessageTemplate,
+    handleNewChat,
+    saveToHistory,
+    restoreHistoryBase,
+  } = shared;
+
+  const handleInsertIcon = useCallback((icon: IconAsset) => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('drawio-insert-icon', {
+        detail: { icon, imageUrl: icon.url }
+      }));
+    }
+  }, []);
+
+  /**
+   * 后处理 Draw.io XML 代码：使用代码处理管道
+   */
+  const postProcessDrawioCode = useCallback((code: string) => {
+    return drawioProcessor.process(code);
+  }, []);
+
+  /**
+   * 应用代码到画布：
+   * - 修复 XML
+   * - 更新 usedCode
+   * - 写入本地状态
+   */
+  const handleApplyCode = useCallback(
+    async (code: string) => {
+      try {
+        const fixedCode = fixUnclosed(code || '', { mode: 'xml' });
+        setUsedCode(fixedCode);
+      } catch (error) {
+        console.error('Apply code error:', error);
+      }
+    },
+    [setUsedCode],
+  );
+
+  /**
+   * 发送消息并调用 LLM：
+   * 使用模板方法，只需提供 Draw.io 特定的后处理逻辑
+   * 注意：不再自动应用到画布，由用户通过编辑器点击"应用"按钮
+   */
+  const handleSendMessage = useCallback(
+    async (input: string, attachments: any[] = [], chartType: string = 'auto', _unusedConfig?: any, showNotification?: (msg: string, type: 'success' | 'error') => void) => {
+      try {
+        // 调用模板方法，传入 Draw.io 特定的配置
+        // 生成的代码会通过 streamingContent 传递给编辑器
+        await handleSendMessageTemplate({
+          input,
+          attachments,
+          chartType,
+          systemPrompt: SYSTEM_PROMPT,
+          userPromptTemplate: USER_PROMPT_TEMPLATE,
+          postProcessFn: postProcessDrawioCode,
+          editor: 'drawio',
+          showNotification: showNotification 
+            ? (n) => showNotification(n.message, n.type === 'info' ? 'success' : n.type)
+            : undefined,
+        });
+
+        // 不再自动应用到画布，由用户通过编辑器点击"应用"按钮
+      } catch (error) {
+        // 错误已在模板方法中处理
+        console.error('Draw.io message send error:', error);
+      }
+    },
+    [handleSendMessageTemplate, postProcessDrawioCode]
+  );
+
+  /**
+   * 针对指定的 assistant 消息执行重试：
+   * - 截断该消息及其之后的历史
+   * - 复用其前一条 user 消息重新调用 LLM
+   */
+  const handleRetryMessage = useCallback(
+    async (targetIndex: number, showNotification?: (msg: string, type: 'success' | 'error') => void) => {
+      try {
+        await handleRetryMessageTemplate({
+          targetIndex,
+          systemPrompt: SYSTEM_PROMPT,
+          postProcessFn: postProcessDrawioCode,
+          editor: 'drawio',
+          showNotification: showNotification 
+            ? (n) => showNotification(n.message, n.type === 'info' ? 'success' : n.type)
+            : undefined,
+        });
+      } catch (error) {
+        console.error('Draw.io message retry error:', error);
+      }
+    },
+    [handleRetryMessageTemplate, postProcessDrawioCode]
+  );
+
+  /**
+   * 画布内容变更回调：
+   * - 修复 XML
+   * - 更新 usedCode
+   * - 写入本地状态
+   */
+  const handleCanvasChange = useCallback(
+    async (code: string) => {
+      try {
+        // const fixedCode = fixUnclosed(code || '', { mode: 'xml' });
+        // setUsedCode(fixedCode);
+        setUsedCode(code);
+      } catch (error) {
+        console.error('Canvas change error:', error);
+      }
+    },
+    [setUsedCode],
+  );
+
+  /**
+   * 恢复历史对话：
+   * - 恢复 conversationId
+   * - 恢复 messages
+   * - 应用 usedCode 到画布
+   */
+  const handleRestoreHistory = useCallback(
+    async (history: any) => {
+      await restoreHistoryBase(history, handleApplyCode);
+    },
+    [restoreHistoryBase, handleApplyCode],
+  );
+
+  /**
+   * 新建对话（带保存）：
+   * - 保存当前对话到历史记录
+   * - 清空画布
+   * - 重置状态
+   */
+  const handleNewChatWithSave = useCallback(
+    async (chartType: string = 'auto') => {
+      const latestCode = shared.usedCodeRef?.current ?? usedCode;
+      await handleNewChat('drawio', chartType, latestCode, true);
+    },
+    [handleNewChat, usedCode, shared.usedCodeRef],
+  );
+
+  // 对外暴露引擎能力
+  return {
+    // 状态
+    usedCode,
+    messages,
+    isGenerating,
+    conversationId,
+    streamingContent,
+    lastError,
+
+    // 操作
+    handleSendMessage,
+    handleRetryMessage,
+    handleApplyCode,
+    handleCanvasChange,
+    handleNewChat: handleNewChatWithSave,
+    saveToHistory,
+    handleRestoreHistory,
+    handleInsertIcon,
+  };
+}
