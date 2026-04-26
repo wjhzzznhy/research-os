@@ -8,7 +8,12 @@ logger = get_logger("agents_pool")
 _llm_cache = {}
 
 
-def get_llm(model_name: str = "qwen-plus", temperature: float = 0.7, max_tokens: int = 2048):
+def clear_llm_cache():
+    _llm_cache.clear()
+
+
+def get_llm(model_name: str | None = None, temperature: float = 0.7, max_tokens: int = 2048):
+    model_name = model_name or settings.LLM_MODEL_DEFAULT
     if model_name in _llm_cache:
         return _llm_cache[model_name]
 

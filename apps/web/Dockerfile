@@ -1,7 +1,23 @@
 # ==========================================
 # Stage 1: Dependencies
 # ==========================================
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG ALL_PROXY
+ARG NO_PROXY
 FROM node:20-slim AS deps
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG ALL_PROXY
+ARG NO_PROXY
+ENV HTTP_PROXY=$HTTP_PROXY
+ENV HTTPS_PROXY=$HTTPS_PROXY
+ENV ALL_PROXY=$ALL_PROXY
+ENV NO_PROXY=$NO_PROXY
+ENV http_proxy=$HTTP_PROXY
+ENV https_proxy=$HTTPS_PROXY
+ENV all_proxy=$ALL_PROXY
+ENV no_proxy=$NO_PROXY
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable
@@ -33,6 +49,18 @@ RUN pnpm install --filter web...
 # Stage 2: Builder
 # ==========================================
 FROM node:20-slim AS builder
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG ALL_PROXY
+ARG NO_PROXY
+ENV HTTP_PROXY=$HTTP_PROXY
+ENV HTTPS_PROXY=$HTTPS_PROXY
+ENV ALL_PROXY=$ALL_PROXY
+ENV NO_PROXY=$NO_PROXY
+ENV http_proxy=$HTTP_PROXY
+ENV https_proxy=$HTTPS_PROXY
+ENV all_proxy=$ALL_PROXY
+ENV no_proxy=$NO_PROXY
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable
@@ -57,6 +85,18 @@ RUN pnpm build
 # Stage 3: Runner (Development)
 # ==========================================
 FROM node:20-slim AS dev
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG ALL_PROXY
+ARG NO_PROXY
+ENV HTTP_PROXY=$HTTP_PROXY
+ENV HTTPS_PROXY=$HTTPS_PROXY
+ENV ALL_PROXY=$ALL_PROXY
+ENV NO_PROXY=$NO_PROXY
+ENV http_proxy=$HTTP_PROXY
+ENV https_proxy=$HTTPS_PROXY
+ENV all_proxy=$ALL_PROXY
+ENV no_proxy=$NO_PROXY
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable
@@ -86,6 +126,18 @@ CMD ["/app/apps/web/start.sh"]
 # Stage 4: Runner (Production)
 # ==========================================
 FROM node:20-slim AS prod
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG ALL_PROXY
+ARG NO_PROXY
+ENV HTTP_PROXY=$HTTP_PROXY
+ENV HTTPS_PROXY=$HTTPS_PROXY
+ENV ALL_PROXY=$ALL_PROXY
+ENV NO_PROXY=$NO_PROXY
+ENV http_proxy=$HTTP_PROXY
+ENV https_proxy=$HTTPS_PROXY
+ENV all_proxy=$ALL_PROXY
+ENV no_proxy=$NO_PROXY
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable

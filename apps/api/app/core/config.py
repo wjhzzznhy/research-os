@@ -57,6 +57,7 @@ class Settings(BaseSettings):
 
     LLM_API_KEY: str = ""
     LLM_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    LLM_MODEL_DEFAULT: str = "qwen-plus"
 
     LOCAL_EMBEDDING_MODEL_PATH: str = "/app/models/embedding"
     USE_LOCAL_EMBEDDINGS: bool = True

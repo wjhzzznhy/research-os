@@ -51,6 +51,15 @@ async def lifespan(app: FastAPI):
     except Exception as worker_error:
         logger.warning(f"⚠️ Icon Embedding Worker 启动失败: {worker_error}")
 
+    try:
+        from app.core.database import sync_engine
+        from app.domain.models import Base
+
+        Base.metadata.create_all(bind=sync_engine)
+        logger.info("   Database Schema: 已检查")
+    except Exception as schema_error:
+        logger.warning(f"⚠️ Database Schema 检查失败: {schema_error}")
+
     logger.info("=" * 60)
     logger.info("✅ ResearchOS API 已就绪!")
     logger.info("=" * 60)

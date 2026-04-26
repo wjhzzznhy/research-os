@@ -35,6 +35,10 @@ class WorkflowCompiler:
         :param config_data: 节点配置数据
         :return: 系统提示词
         """
+        inline_prompt = config_data.get("system_prompt") or config_data.get("prompt")
+        if inline_prompt:
+            return inline_prompt
+
         prompt_id = config_data.get("prompt_id")
         prompt_name = config_data.get("prompt_name") 
         lang = config_data.get("lang", "zh") # 支持图纸配置语言
@@ -168,6 +172,12 @@ class WorkflowCompiler:
             return out_edges[0]["target"] if out_edges else END
         return evaluator
 
+    @staticmethod
+    def _pass_through_node(state: DynamicState) -> dict:
+        # Reducer fields such as history must not be returned unchanged,
+        # otherwise LangGraph will append the same history again.
+        return {}
+
     def compile(self):
         """主编译过程：将 JSON 解析为 LangGraph 实例"""
         # 1. 遍历并注册所有节点
@@ -178,15 +188,15 @@ class WorkflowCompiler:
             if n_type == "start":
                 self.entry_point = n_id
                 # start 节点只是个入口，直接放行 (Pass-through)
-                self.graph.add_node(n_id, lambda state: state)
+                self.graph.add_node(n_id, self._pass_through_node)
             elif n_type == "agent":
                 # 真正的 AI 节点，挂载我们写好的大模型执行器
                 self.graph.add_node(n_id, self._create_agent_node(node))
             elif n_type == "router":
                 # 路由节点在 LangGraph 中本质也是个空节点，靠后面的 conditional_edges 决定方向
-                self.graph.add_node(n_id, lambda state: state)
+                self.graph.add_node(n_id, self._pass_through_node)
             elif n_type == "end":
-                self.graph.add_node(n_id, lambda state: state)
+                self.graph.add_node(n_id, self._pass_through_node)
 
         # 2. 遍历并注册所有连线
         for node in self.nodes:

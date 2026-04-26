@@ -20,6 +20,12 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
       target: dev
+      network: host
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        ALL_PROXY: ${ALL_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-}
     restart: always
     environment:
       - NEXT_PUBLIC_API_URL=/api/v1
@@ -61,6 +67,12 @@ services:
       context: ./apps/api
       dockerfile: Dockerfile
       target: dev
+      network: host
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        ALL_PROXY: ${ALL_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-}
     volumes:
       - ./apps/api/app:/app/app:ro
       - ./excalidraw_all_with_description:/app/excalidraw_all_with_description:ro
@@ -76,6 +88,9 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.siliconflow.cn/v1}
+      - LLM_MODEL_DEFAULT=${LLM_MODEL_DEFAULT:-Qwen/Qwen2.5-7B-Instruct}
       - RUSTFS_ENDPOINT=http://rustfs:9000
       - RUSTFS_ACCESS_KEY=${RUSTFS_USER}
       - RUSTFS_SECRET_KEY=${RUSTFS_PASSWORD}
@@ -112,6 +127,12 @@ services:
       context: ./apps/api
       dockerfile: Dockerfile
       target: dev
+      network: host
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        ALL_PROXY: ${ALL_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-}
     command: celery -A app.core.celery_app worker -l info --pool=solo
     volumes:
       - ./apps/api/app:/app/app:ro
@@ -126,6 +147,9 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.siliconflow.cn/v1}
+      - LLM_MODEL_DEFAULT=${LLM_MODEL_DEFAULT:-Qwen/Qwen2.5-7B-Instruct}
       - RUSTFS_ENDPOINT=http://rustfs:9000
       - RUSTFS_ACCESS_KEY=${RUSTFS_USER}
       - RUSTFS_SECRET_KEY=${RUSTFS_PASSWORD}
@@ -143,6 +167,12 @@ services:
     build:
       context: ./docker/mineru
       dockerfile: Dockerfile
+      network: host
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        ALL_PROXY: ${ALL_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-}
     restart: unless-stopped
     environment:
       - MINERU_EXECUTABLE=python

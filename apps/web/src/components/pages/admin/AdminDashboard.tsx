@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLayout } from '@/context/LayoutContext';
+import { apiClient } from '@/lib/api/client';
 import {
   RobotOutlined,
-  AppstoreOutlined,
   ToolOutlined,
   ApartmentOutlined,
   SettingOutlined,
@@ -16,7 +16,6 @@ import {
   DeleteOutlined,
   CopyOutlined,
   PlayCircleOutlined,
-  ThunderboltOutlined,
   ApiOutlined,
   DatabaseOutlined,
   FileTextOutlined,
@@ -28,17 +27,11 @@ import {
   LeftOutlined,
   SaveOutlined,
   EyeOutlined,
-  CloseOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   UserOutlined,
-  TeamOutlined,
-  NodeIndexOutlined,
   BranchesOutlined,
   ReadOutlined,
-  HighlightOutlined,
-  StarOutlined,
-  FileSearchOutlined,
 } from '@ant-design/icons';
 
 /* ═══════════════════════════════════════════════════════
@@ -88,6 +81,68 @@ interface AgentData {
 
 type AdminView = 'dashboard' | 'editor' | 'orchestration';
 type EditorTab = 'role' | 'prompt' | 'skills' | 'settings';
+type ApiEnvelope<T> = { code: number; message: string; data: T; trace_id?: string };
+type SystemConfigData = {
+  llm_api_key_masked: string;
+  llm_base_url: string;
+  llm_model_default: string;
+};
+type AgentRunData = {
+  session_id: number;
+  status: string;
+  final_output: string;
+  execution_history: Array<{ role?: string; content?: string }>;
+};
+
+const MODEL_SUGGESTIONS = [
+  'Qwen/Qwen2.5-7B-Instruct',
+  'Qwen/Qwen3-8B',
+  'deepseek-ai/DeepSeek-V3',
+  'gpt-4o',
+  'gpt-4o-mini',
+  'qwen-plus',
+  'qwen-max',
+];
+
+async function listAgentTemplates() {
+  const response = await apiClient.get<ApiEnvelope<AgentData[]>>('/agents/templates');
+  return response.data.data;
+}
+
+async function createAgentTemplate(agent: AgentData) {
+  const response = await apiClient.post<ApiEnvelope<AgentData>>('/agents/templates', agent);
+  return response.data.data;
+}
+
+async function updateAgentTemplate(agent: AgentData) {
+  const response = await apiClient.put<ApiEnvelope<AgentData>>(`/agents/templates/${agent.id}`, agent);
+  return response.data.data;
+}
+
+async function deleteAgentTemplate(agentId: string) {
+  await apiClient.delete<ApiEnvelope<{ message: string }>>(`/agents/templates/${agentId}`);
+}
+
+async function getSystemConfig() {
+  const response = await apiClient.get<ApiEnvelope<SystemConfigData>>('/system/config');
+  return response.data.data;
+}
+
+async function updateSystemConfig(data: { llm_api_key?: string; llm_base_url?: string; llm_model_default?: string }) {
+  const response = await apiClient.put<ApiEnvelope<{ message: string }>>('/system/config', data);
+  return response.data.data;
+}
+
+async function runAgentWorkflow(workflowId: string, userInput: string) {
+  const response = await apiClient.post<ApiEnvelope<AgentRunData>>('/agents/run', {
+    project_id: 1,
+    workflow_id: workflowId,
+    session_name: '管理台运行测试',
+    user_input: userInput,
+    payload: {},
+  }, { timeout: 60000 });
+  return response.data.data;
+}
 
 /* ═══════════════════════════════════════════════════════
    Mock 数据
@@ -352,6 +407,7 @@ export default function AdminDashboard() {
   const router = useRouter();
   const { logout } = useLayout();
   const [agents, setAgents] = useState<AgentData[]>(MOCK_AGENTS);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [activeNav, setActiveNav] = useState('agents');
   const [view, setView] = useState<AdminView>('dashboard');
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
@@ -369,6 +425,22 @@ export default function AdminDashboard() {
     const q = searchQuery.toLowerCase();
     return agents.filter(a => a.name.toLowerCase().includes(q) || a.description.toLowerCase().includes(q));
   }, [agents, searchQuery]);
+
+  useEffect(() => {
+    let alive = true;
+    listAgentTemplates()
+      .then(items => {
+        if (!alive) return;
+        if (items.length > 0) setAgents(items);
+        setLoadError(null);
+      })
+      .catch(error => {
+        console.error('Failed to load agent templates', error);
+        if (alive) setLoadError('后端模板暂时不可用，当前显示本地默认模板');
+      })
+
+    return () => { alive = false; };
+  }, []);
 
   const openEditor = useCallback((agentId: string) => {
     setSelectedAgentId(agentId);
@@ -390,7 +462,35 @@ export default function AdminDashboard() {
     setAgents(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
   }, []);
 
-  const duplicateAgent = useCallback((id: string) => {
+  const saveAgent = useCallback(async (id: string, updates: Partial<AgentData> = {}) => {
+    let nextAgent: AgentData | null = null;
+    setAgents(prev => prev.map(agent => {
+      if (agent.id !== id) return agent;
+      nextAgent = {
+        ...agent,
+        ...updates,
+        lastModified: new Date().toISOString().split('T')[0],
+      };
+      return nextAgent;
+    }));
+
+    if (!nextAgent) return;
+
+    try {
+      const saved = await updateAgentTemplate(nextAgent);
+      setAgents(prev => prev.map(agent => agent.id === id ? saved : agent));
+    } catch (error) {
+      try {
+        const created = await createAgentTemplate(nextAgent);
+        setAgents(prev => prev.map(agent => agent.id === id ? created : agent));
+      } catch (createError) {
+        console.error('Failed to save agent template', createError || error);
+        throw createError;
+      }
+    }
+  }, []);
+
+  const duplicateAgent = useCallback(async (id: string) => {
     const agent = agents.find(a => a.id === id);
     if (!agent) return;
     const newAgent: AgentData = {
@@ -402,14 +502,25 @@ export default function AdminDashboard() {
       calls: 0,
     };
     setAgents(prev => [...prev, newAgent]);
+    try {
+      const saved = await createAgentTemplate(newAgent);
+      setAgents(prev => prev.map(a => a.id === newAgent.id ? saved : a));
+    } catch (error) {
+      console.error('Failed to duplicate agent template', error);
+    }
   }, [agents]);
 
-  const deleteAgent = useCallback((id: string) => {
+  const deleteAgent = useCallback(async (id: string) => {
     setAgents(prev => prev.filter(a => a.id !== id));
     if (selectedAgentId === id) backToDashboard();
+    try {
+      await deleteAgentTemplate(id);
+    } catch (error) {
+      console.error('Failed to delete agent template', error);
+    }
   }, [selectedAgentId, backToDashboard]);
 
-  const createAgent = useCallback(() => {
+  const createAgent = useCallback(async () => {
     const newAgent: AgentData = {
       id: `agent-${Date.now()}`,
       name: '新建智能体',
@@ -439,6 +550,13 @@ export default function AdminDashboard() {
     };
     setAgents(prev => [...prev, newAgent]);
     openEditor(newAgent.id);
+    try {
+      const saved = await createAgentTemplate(newAgent);
+      setAgents(prev => prev.map(a => a.id === newAgent.id ? saved : a));
+      openEditor(saved.id);
+    } catch (error) {
+      console.error('Failed to create agent template', error);
+    }
   }, [openEditor]);
 
   const handleLogout = useCallback(() => {
@@ -506,6 +624,7 @@ export default function AdminDashboard() {
         {view === 'dashboard' && activeNav === 'agents' && (
           <AgentListView
             agents={filteredAgents}
+            loadError={loadError}
             searchQuery={searchQuery}
             onSearch={setSearchQuery}
             onEdit={openEditor}
@@ -513,7 +632,6 @@ export default function AdminDashboard() {
             onDuplicate={duplicateAgent}
             onDelete={deleteAgent}
             onCreate={createAgent}
-            onStatusChange={(id, status) => updateAgent(id, { status })}
           />
         )}
         {view === 'dashboard' && activeNav === 'skills' && (
@@ -532,6 +650,7 @@ export default function AdminDashboard() {
             setEditorTab={setEditorTab}
             onBack={backToDashboard}
             onUpdate={(updates) => updateAgent(selectedAgent.id, updates)}
+            onSave={() => saveAgent(selectedAgent.id)}
             onOrchestrate={() => openOrchestration(selectedAgent.id)}
           />
         )}
@@ -539,7 +658,7 @@ export default function AdminDashboard() {
           <OrchestrationEditor
             agent={selectedAgent}
             onBack={backToDashboard}
-            onUpdate={(updates) => updateAgent(selectedAgent.id, updates)}
+            onUpdate={(updates) => saveAgent(selectedAgent.id, updates)}
           />
         )}
       </div>
@@ -552,9 +671,10 @@ export default function AdminDashboard() {
    ═══════════════════════════════════════════════════════ */
 
 function AgentListView({
-  agents, searchQuery, onSearch, onEdit, onOrchestrate, onDuplicate, onDelete, onCreate, onStatusChange,
+  agents, loadError, searchQuery, onSearch, onEdit, onOrchestrate, onDuplicate, onDelete, onCreate,
 }: {
   agents: AgentData[];
+  loadError: string | null;
   searchQuery: string;
   onSearch: (q: string) => void;
   onEdit: (id: string) => void;
@@ -562,7 +682,6 @@ function AgentListView({
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
   onCreate: () => void;
-  onStatusChange: (id: string, status: AgentData['status']) => void;
 }) {
   return (
     <div className="flex-1 overflow-auto">
@@ -571,7 +690,9 @@ function AgentListView({
         <div className="px-6 py-4 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold text-gray-900">智能体管理</h2>
-            <p className="text-xs text-gray-400 mt-0.5">管理和配置平台中的所有 AI 智能体</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {loadError || '管理和配置平台中的所有 AI 智能体'}
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <div className="relative">
@@ -714,13 +835,14 @@ function AgentListView({
    ═══════════════════════════════════════════════════════ */
 
 function AgentEditorView({
-  agent, editorTab, setEditorTab, onBack, onUpdate, onOrchestrate,
+  agent, editorTab, setEditorTab, onBack, onUpdate, onSave, onOrchestrate,
 }: {
   agent: AgentData;
   editorTab: EditorTab;
   setEditorTab: (t: EditorTab) => void;
   onBack: () => void;
   onUpdate: (updates: Partial<AgentData>) => void;
+  onSave: () => void | Promise<void>;
   onOrchestrate: () => void;
 }) {
   const TABS: { key: EditorTab; label: string; icon: React.ReactNode }[] = [
@@ -760,7 +882,10 @@ function AgentEditorView({
             <EyeOutlined style={{ fontSize: '12px' }} />
             预览
           </button>
-          <button className="flex items-center gap-1.5 px-4 h-8 text-xs text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors shadow-sm font-medium">
+          <button
+            onClick={() => { void onSave(); }}
+            className="flex items-center gap-1.5 px-4 h-8 text-xs text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors shadow-sm font-medium"
+          >
             <SaveOutlined style={{ fontSize: '12px' }} />
             保存
           </button>
@@ -967,19 +1092,16 @@ function AgentEditorView({
         {editorTab === 'settings' && (
           <div className="max-w-3xl space-y-6">
             <Section title="模型配置">
-              <Field label="模型">
-                <select
+              <Field label="模型" hint="可选择建议项，也可以直接输入任意兼容 OpenAI API 的模型名">
+                <input
+                  list="admin-agent-model-suggestions"
                   value={agent.model}
                   onChange={e => onUpdate({ model: e.target.value })}
                   className="w-full h-10 px-3 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-primary/40 transition-all"
-                >
-                  <option value="gpt-4o">GPT-4o</option>
-                  <option value="gpt-4o-mini">GPT-4o-mini</option>
-                  <option value="gpt-3.5-turbo">GPT-3.5-turbo</option>
-                  <option value="claude-3.5-sonnet">Claude 3.5 Sonnet</option>
-                  <option value="deepseek-v3">DeepSeek V3</option>
-                  <option value="qwen-max">通义千问 Max</option>
-                </select>
+                />
+                <datalist id="admin-agent-model-suggestions">
+                  {MODEL_SUGGESTIONS.map(model => <option key={model} value={model} />)}
+                </datalist>
               </Field>
               <Field label={`温度 (Temperature): ${agent.temperature}`} hint="越低越确定，越高越有创造性">
                 <input
@@ -1030,7 +1152,7 @@ function OrchestrationEditor({
 }: {
   agent: AgentData;
   onBack: () => void;
-  onUpdate: (updates: Partial<AgentData>) => void;
+  onUpdate: (updates: Partial<AgentData>) => void | Promise<void>;
 }) {
   const NODE_W = 164;
   const NODE_H = 68;
@@ -1047,6 +1169,12 @@ function OrchestrationEditor({
   const [editingLabel, setEditingLabel] = useState(false);
   const [editLabelText, setEditLabelText] = useState('');
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [testInput, setTestInput] = useState('请只回答：前端编排是否已经接通后端和模型？');
+  const [testResult, setTestResult] = useState<AgentRunData | null>(null);
+  const [testError, setTestError] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const selectedNode = nodes.find(n => n.id === selectedNodeId) ?? null;
@@ -1056,11 +1184,6 @@ function OrchestrationEditor({
     start: '开始节点', llm: 'LLM 节点', tool: '工具节点',
     condition: '条件分支', reply: '回复节点', knowledge: '知识库',
   };
-  const NODE_DEFAULT_LABELS: Record<WorkflowNode['type'], string> = {
-    start: '开始', llm: 'LLM 处理', tool: '工具调用',
-    condition: '条件判断', reply: '输出回复', knowledge: '知识检索',
-  };
-
   const getCanvasPos = useCallback((e: React.MouseEvent) => {
     const el = containerRef.current;
     if (!el) return { x: 0, y: 0 };
@@ -1121,13 +1244,17 @@ function OrchestrationEditor({
   }, [connecting, edges]);
 
   const addNode = useCallback((type: WorkflowNode['type']) => {
+    const nodeDefaultLabels: Record<WorkflowNode['type'], string> = {
+      start: '开始', llm: 'LLM 处理', tool: '工具调用',
+      condition: '条件判断', reply: '输出回复', knowledge: '知识检索',
+    };
     const el = containerRef.current;
     const cx = el ? el.scrollLeft + el.clientWidth / 2 : 400;
     const cy = el ? el.scrollTop + el.clientHeight / 2 : 300;
     const newNode: WorkflowNode = {
       id: `n-${Date.now()}`,
       type,
-      label: NODE_DEFAULT_LABELS[type],
+      label: nodeDefaultLabels[type],
       x: Math.max(0, cx - NODE_W / 2 + (Math.random() - 0.5) * 120),
       y: Math.max(0, cy - NODE_H / 2 + (Math.random() - 0.5) * 80),
     };
@@ -1159,11 +1286,43 @@ function OrchestrationEditor({
     setNodes(prev => prev.map(n => n.id === selectedNodeId ? { ...n, type } : n));
   }, [selectedNodeId]);
 
-  const handleSave = useCallback(() => {
-    onUpdate({ workflow: { nodes, edges } });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1800);
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await onUpdate({ workflow: { nodes, edges } });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1800);
+    } catch (error) {
+      console.error('Failed to save workflow', error);
+      setSaveError('保存失败，请确认后端服务已启动');
+    } finally {
+      setSaving(false);
+    }
   }, [nodes, edges, onUpdate]);
+
+  const handleRunTest = useCallback(async () => {
+    if (!testInput.trim()) {
+      setTestError('请输入测试内容');
+      return;
+    }
+
+    setTesting(true);
+    setTestError(null);
+    setTestResult(null);
+    try {
+      await onUpdate({ workflow: { nodes, edges } });
+      const result = await runAgentWorkflow(`agent_template_${agent.id}`, testInput.trim());
+      setTestResult(result);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1800);
+    } catch (error) {
+      console.error('Failed to run workflow test', error);
+      setTestError('运行失败，请检查模型配置、节点连线或后端日志');
+    } finally {
+      setTesting(false);
+    }
+  }, [agent.id, nodes, edges, onUpdate, testInput]);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -1189,14 +1348,30 @@ function OrchestrationEditor({
               点击目标节点左侧端口完成连接 · ESC 取消
             </span>
           )}
+          {saveError && (
+            <span className="text-[11px] px-3 py-1.5 bg-red-50 text-red-500 rounded-full font-medium">
+              {saveError}
+            </span>
+          )}
           <button
             onClick={handleSave}
+            disabled={saving}
             className={`flex items-center gap-1.5 px-4 h-8 text-xs rounded-lg shadow-sm font-medium transition-all ${
               saved ? 'bg-emerald-500 text-white' : 'bg-primary text-white hover:bg-primary/90'
-            }`}
+            } ${saving ? 'opacity-70 cursor-not-allowed' : ''}`}
           >
             {saved ? <CheckCircleFilled style={{ fontSize: '12px' }} /> : <SaveOutlined style={{ fontSize: '12px' }} />}
-            {saved ? '已保存' : '保存'}
+            {saving ? '保存中' : saved ? '已保存' : '保存'}
+          </button>
+          <button
+            onClick={handleRunTest}
+            disabled={testing || saving}
+            className={`flex items-center gap-1.5 px-4 h-8 text-xs rounded-lg shadow-sm font-medium transition-all bg-emerald-600 text-white hover:bg-emerald-700 ${
+              testing || saving ? 'opacity-70 cursor-not-allowed' : ''
+            }`}
+          >
+            <PlayCircleOutlined style={{ fontSize: '12px' }} />
+            {testing ? '运行中' : '运行测试'}
           </button>
         </div>
       </div>
@@ -1486,10 +1661,50 @@ function OrchestrationEditor({
                 ))}
               </div>
             </div>
-          )}
+	          )}
 
-          {/* 操作提示 */}
-          <div className="shrink-0 p-3 border-t border-gray-100 bg-gray-50/50">
+	          {/* 运行测试 */}
+	          <div className="shrink-0 p-3 border-t border-gray-100 bg-white">
+	            <div className="flex items-center justify-between mb-2">
+	              <p className="text-xs font-bold text-gray-700">运行测试</p>
+	              {testResult && (
+	                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 font-medium">
+	                  {testResult.status}
+	                </span>
+	              )}
+	            </div>
+	            <textarea
+	              value={testInput}
+	              onChange={e => setTestInput(e.target.value)}
+	              rows={3}
+	              className="w-full resize-none px-2.5 py-2 text-xs bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all"
+	            />
+	            <button
+	              onClick={handleRunTest}
+	              disabled={testing || saving}
+	              className={`mt-2 w-full flex items-center justify-center gap-1.5 h-8 text-xs rounded-lg font-medium transition-all bg-emerald-600 text-white hover:bg-emerald-700 ${
+	                testing || saving ? 'opacity-70 cursor-not-allowed' : ''
+	              }`}
+	            >
+	              <PlayCircleOutlined style={{ fontSize: '12px' }} />
+	              {testing ? '运行中...' : '运行当前编排'}
+	            </button>
+	            {testError && (
+	              <p className="mt-2 text-[11px] leading-relaxed text-red-500">{testError}</p>
+	            )}
+	            {testResult && (
+	              <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
+	                <p className="text-[10px] font-semibold text-emerald-700 mb-1">模型输出</p>
+	                <p className="text-xs leading-relaxed text-gray-700 whitespace-pre-wrap break-words">
+	                  {testResult.final_output || '执行完成，但没有返回内容'}
+	                </p>
+	                <p className="mt-2 text-[10px] text-gray-400">Session #{testResult.session_id}</p>
+	              </div>
+	            )}
+	          </div>
+
+	          {/* 操作提示 */}
+	          <div className="shrink-0 p-3 border-t border-gray-100 bg-gray-50/50">
             <div className="space-y-0.5 text-[10px] text-gray-400 leading-relaxed">
               <p>· 拖拽节点可自由移动</p>
               <p>· 点击右侧 <span className="text-gray-500 font-medium">●</span> 开始连线</p>
@@ -1601,6 +1816,56 @@ function OrchestrationOverview({ agents, onEdit }: { agents: AgentData[]; onEdit
    ═══════════════════════════════════════════════════════ */
 
 function SystemSettingsView() {
+  const [apiKey, setApiKey] = useState('');
+  const [maskedApiKey, setMaskedApiKey] = useState('***');
+  const [baseUrl, setBaseUrl] = useState('https://api.siliconflow.cn/v1');
+  const [defaultModel, setDefaultModel] = useState('Qwen/Qwen2.5-7B-Instruct');
+  const [saving, setSaving] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [statusType, setStatusType] = useState<'success' | 'error'>('success');
+
+  useEffect(() => {
+    let alive = true;
+    getSystemConfig()
+      .then(config => {
+        if (!alive) return;
+        setMaskedApiKey(config.llm_api_key_masked || '***');
+        setBaseUrl(config.llm_base_url || 'https://api.siliconflow.cn/v1');
+        setDefaultModel(config.llm_model_default || 'Qwen/Qwen2.5-7B-Instruct');
+      })
+      .catch(error => {
+        console.error('Failed to load system config', error);
+        if (!alive) return;
+        setStatusType('error');
+        setStatusMessage('读取配置失败，请确认后端服务可用');
+      });
+    return () => { alive = false; };
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    setStatusMessage(null);
+    try {
+      await updateSystemConfig({
+        ...(apiKey.trim() ? { llm_api_key: apiKey.trim() } : {}),
+        llm_base_url: baseUrl.trim(),
+        llm_model_default: defaultModel.trim(),
+      });
+      setStatusType('success');
+      setStatusMessage('配置已更新，新的模型调用会立即生效');
+      if (apiKey.trim()) {
+        setMaskedApiKey(`${apiKey.trim().slice(0, 3)}***${apiKey.trim().slice(-4)}`);
+        setApiKey('');
+      }
+    } catch (error) {
+      console.error('Failed to save system config', error);
+      setStatusType('error');
+      setStatusMessage('保存失败，请检查后端服务或配置内容');
+    } finally {
+      setSaving(false);
+    }
+  }, [apiKey, baseUrl, defaultModel]);
+
   return (
     <div className="flex-1 overflow-auto">
       <div className="px-6 py-4 border-b border-gray-100 bg-[#f7f8fa]/80 backdrop-blur-lg">
@@ -1608,22 +1873,53 @@ function SystemSettingsView() {
         <p className="text-xs text-gray-400 mt-0.5">全局参数与平台配置</p>
       </div>
       <div className="p-6 max-w-2xl space-y-6">
-        <Section title="API 密钥管理">
-          <Field label="OpenAI API Key">
+        <Section title="模型服务配置" hint="兼容 OpenAI API 的服务都可以填，比如 SiliconFlow、DashScope 或自建网关">
+          <Field label="API Key">
             <input
               type="password"
-              value="sk-••••••••••••••••••••••••"
-              readOnly
-              className="w-full h-10 px-3 text-sm bg-gray-50 border border-gray-200 rounded-xl outline-none font-mono"
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
+              placeholder={`当前: ${maskedApiKey}，留空则不修改`}
+              className="w-full h-10 px-3 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-primary/40 transition-all font-mono"
             />
           </Field>
-          <Field label="默认模型">
-            <select className="w-full h-10 px-3 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-primary/40 transition-all">
-              <option>GPT-4o</option>
-              <option>GPT-4o-mini</option>
-              <option>Claude 3.5 Sonnet</option>
-            </select>
+          <Field label="Base URL">
+            <input
+              value={baseUrl}
+              onChange={e => setBaseUrl(e.target.value)}
+              placeholder="https://api.siliconflow.cn/v1"
+              className="w-full h-10 px-3 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-primary/40 transition-all font-mono"
+            />
           </Field>
+          <Field label="默认模型" hint="可选择建议项，也可以手动输入模型 ID">
+            <input
+              list="admin-system-model-suggestions"
+              value={defaultModel}
+              onChange={e => setDefaultModel(e.target.value)}
+              placeholder="Qwen/Qwen2.5-7B-Instruct"
+              className="w-full h-10 px-3 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:border-primary/40 transition-all font-mono"
+            />
+            <datalist id="admin-system-model-suggestions">
+              {MODEL_SUGGESTIONS.map(model => <option key={model} value={model} />)}
+            </datalist>
+          </Field>
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              onClick={handleSave}
+              disabled={saving || !baseUrl.trim() || !defaultModel.trim()}
+              className={`flex items-center gap-1.5 px-4 h-9 text-xs text-white bg-primary hover:bg-primary/90 rounded-xl transition-colors shadow-sm font-medium ${
+                saving ? 'opacity-70 cursor-not-allowed' : ''
+              }`}
+            >
+              <SaveOutlined style={{ fontSize: '12px' }} />
+              {saving ? '保存中' : '保存配置'}
+            </button>
+            {statusMessage && (
+              <span className={`text-xs ${statusType === 'success' ? 'text-emerald-600' : 'text-red-500'}`}>
+                {statusMessage}
+              </span>
+            )}
+          </div>
         </Section>
         <Section title="平台信息">
           <div className="grid grid-cols-2 gap-4 text-sm">

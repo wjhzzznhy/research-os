@@ -7,12 +7,50 @@ from sqlalchemy.orm import Session
 
 from app.server.deps import get_db, SessionLocal
 from app.common.response import success_response
-from app.domain.schemas.agent import AgentRunRequest
+from app.domain.schemas.agent import AgentRunRequest, AgentTemplateCreate, AgentTemplateUpdate
 from app.application.services.agent_service import AgentService
+from app.application.services.agent_template_service import AgentTemplateService
 from app.application.services.workflow_service import WorkflowService
 from app.application.agent_framework.compiler import WorkflowCompiler
 
 router = APIRouter()
+
+@router.get("/templates", summary="获取智能体模板列表")
+def list_agent_templates(request: Request, db: Session = Depends(get_db)):
+    templates = AgentTemplateService.list(db)
+    return success_response(
+        data=[AgentTemplateService.to_api_data(item) for item in templates],
+        trace_id=request.state.trace_id,
+    )
+
+@router.post("/templates", summary="创建智能体模板")
+def create_agent_template(body: AgentTemplateCreate, request: Request, db: Session = Depends(get_db)):
+    template = AgentTemplateService.create(db, body)
+    return success_response(
+        data=AgentTemplateService.to_api_data(template),
+        trace_id=request.state.trace_id,
+    )
+
+@router.get("/templates/{template_id}", summary="获取智能体模板详情")
+def get_agent_template(template_id: str, request: Request, db: Session = Depends(get_db)):
+    template = AgentTemplateService.get(db, template_id)
+    return success_response(
+        data=AgentTemplateService.to_api_data(template),
+        trace_id=request.state.trace_id,
+    )
+
+@router.put("/templates/{template_id}", summary="更新智能体模板")
+def update_agent_template(template_id: str, body: AgentTemplateUpdate, request: Request, db: Session = Depends(get_db)):
+    template = AgentTemplateService.update(db, template_id, body)
+    return success_response(
+        data=AgentTemplateService.to_api_data(template),
+        trace_id=request.state.trace_id,
+    )
+
+@router.delete("/templates/{template_id}", summary="删除智能体模板")
+def delete_agent_template(template_id: str, request: Request, db: Session = Depends(get_db)):
+    AgentTemplateService.delete(db, template_id)
+    return success_response(data={"message": "Agent template deleted"}, trace_id=request.state.trace_id)
 
 @router.post("/run", summary="同步执行智能体工作流")
 async def run_agent(body: AgentRunRequest, request: Request, db: Session = Depends(get_db)):

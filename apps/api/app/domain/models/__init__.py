@@ -8,6 +8,7 @@ from app.domain.models.document_chunk import DocumentChunk
 from app.domain.models.document_image import DocumentImage
 from app.domain.models.skill import Skill
 from app.domain.models.agent_session import AgentSession
+from app.domain.models.agent_template import AgentTemplate
 from app.domain.models.skill_call import SkillCall
 from app.domain.models.memory_item import MemoryItem
 from app.domain.models.workflow import Workflow
@@ -24,6 +25,7 @@ __all__ = [
     "DocumentImage",
     "Skill",
     "AgentSession",
+    "AgentTemplate",
     "SkillCall",
     "MemoryItem",
     "Workflow",

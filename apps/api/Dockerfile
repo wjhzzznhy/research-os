@@ -6,8 +6,24 @@
 # ==========================================
 # Development Stage
 # ==========================================
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG ALL_PROXY
+ARG NO_PROXY
 FROM nvidia/cuda:12.8.0-runtime-ubuntu24.04 AS dev
 
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG ALL_PROXY
+ARG NO_PROXY
+ENV HTTP_PROXY=$HTTP_PROXY
+ENV HTTPS_PROXY=$HTTPS_PROXY
+ENV ALL_PROXY=$ALL_PROXY
+ENV NO_PROXY=$NO_PROXY
+ENV http_proxy=$HTTP_PROXY
+ENV https_proxy=$HTTPS_PROXY
+ENV all_proxy=$ALL_PROXY
+ENV no_proxy=$NO_PROXY
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Shanghai
 ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
@@ -74,6 +90,18 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload
 # ==========================================
 FROM nvidia/cuda:12.8.0-runtime-ubuntu24.04 AS prod
 
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG ALL_PROXY
+ARG NO_PROXY
+ENV HTTP_PROXY=$HTTP_PROXY
+ENV HTTPS_PROXY=$HTTPS_PROXY
+ENV ALL_PROXY=$ALL_PROXY
+ENV NO_PROXY=$NO_PROXY
+ENV http_proxy=$HTTP_PROXY
+ENV https_proxy=$HTTPS_PROXY
+ENV all_proxy=$ALL_PROXY
+ENV no_proxy=$NO_PROXY
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Shanghai
 ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
