@@ -7,12 +7,13 @@ import LoginModal from '@/components/User/LoginModal';
 
 // 内部弹窗组件
 function GlobalLogin() {
-  const { isLoginModalOpen, setIsLoginModalOpen, login } = useLayout();
+  const { isLoginModalOpen, setIsLoginModalOpen, login, adminLogin } = useLayout();
   return (
     <LoginModal 
       isOpen={isLoginModalOpen} 
       onClose={() => setIsLoginModalOpen(false)} 
-      onSuccess={login} 
+      onSuccess={login}
+      onAdminSuccess={adminLogin}
     />
   );
 }

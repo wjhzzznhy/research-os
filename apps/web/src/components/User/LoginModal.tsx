@@ -1,4 +1,6 @@
 'use client';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button, Modal, Tabs, Input, Checkbox, Divider } from 'antd';
 import { WechatOutlined, GlobalOutlined } from '@ant-design/icons';
 
@@ -6,13 +8,27 @@ interface LoginProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  onAdminSuccess?: () => void;
 }
 
-export default function LoginModal({ isOpen, onClose, onSuccess }: LoginProps) {
-  // 登录点击处理
+export default function LoginModal({ isOpen, onClose, onSuccess, onAdminSuccess }: LoginProps) {
+  const router = useRouter();
+  const [account, setAccount] = useState('');
+  const [password, setPassword] = useState('');
+
+  // 普通登录
   const handleLoginClick = () => {
-    // 逻辑流：执行登录 -> 父组件感知成功(设置isLoggedIn并关闭弹窗)
     onSuccess();
+  };
+
+  // 账号登录 - 检测管理员
+  const handleAccountLogin = () => {
+    if (account.trim() === 'admin' && password === 'admin123') {
+      onAdminSuccess?.();
+      router.push('/admin');
+    } else {
+      onSuccess();
+    }
   };
 
   return (
@@ -73,17 +89,30 @@ export default function LoginModal({ isOpen, onClose, onSuccess }: LoginProps) {
               children: (
                 <div className="pt-6 space-y-5">
                   <div>
-                    <Input placeholder="请输入账号/手机号/邮箱" size="large" className="rounded-xl" />
+                    <Input 
+                      placeholder="请输入账号/手机号/邮箱" 
+                      size="large" 
+                      className="rounded-xl"
+                      value={account}
+                      onChange={(e) => setAccount(e.target.value)}
+                    />
                   </div>
                   <div>
-                    <Input.Password placeholder="请输入密码" size="large" className="rounded-xl" />
+                    <Input.Password 
+                      placeholder="请输入密码" 
+                      size="large" 
+                      className="rounded-xl"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      onPressEnter={handleAccountLogin}
+                    />
                   </div>
                   <Button 
                     type="primary" 
                     block 
                     size="large" 
                     className="bg-primary! hover:bg-primary-hover! h-11 text-base mt-2 rounded-xl" 
-                    onClick={handleLoginClick}
+                    onClick={handleAccountLogin}
                   >
                     登 录
                   </Button>
