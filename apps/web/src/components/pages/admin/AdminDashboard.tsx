@@ -46,13 +46,28 @@ interface AgentSkill {
   enabled: boolean;
 }
 
+interface WorkflowNodeConfig {
+  system_prompt?: string;
+  prompt?: string;
+  model?: string;
+  temperature?: number;
+  max_tokens?: number;
+  tools?: string[];
+  query_hint?: string;
+  output_format?: string;
+  condition_note?: string;
+  reply_template?: string;
+  inputs?: Record<string, string>;
+  [key: string]: unknown;
+}
+
 interface WorkflowNode {
   id: string;
   type: 'start' | 'llm' | 'tool' | 'condition' | 'reply' | 'knowledge';
   label: string;
   x: number;
   y: number;
-  config?: Record<string, string>;
+  config?: WorkflowNodeConfig;
 }
 
 interface WorkflowEdge {
@@ -399,6 +414,13 @@ const ADMIN_NAV = [
   { id: 'settings', label: '系统设置', icon: <SettingOutlined /> },
 ];
 
+function mergeDefaultAndSavedAgents(savedAgents: AgentData[]) {
+  const savedMap = new Map(savedAgents.map(agent => [agent.id, agent]));
+  const merged = MOCK_AGENTS.map(agent => savedMap.get(agent.id) ?? agent);
+  const customAgents = savedAgents.filter(agent => !MOCK_AGENTS.some(item => item.id === agent.id));
+  return [...merged, ...customAgents];
+}
+
 /* ═══════════════════════════════════════════════════════
    主组件
    ═══════════════════════════════════════════════════════ */
@@ -414,6 +436,9 @@ export default function AdminDashboard() {
   const [editorTab, setEditorTab] = useState<EditorTab>('role');
   const [searchQuery, setSearchQuery] = useState('');
   const [sideCollapsed, setSideCollapsed] = useState(false);
+  const [defaultModel, setDefaultModel] = useState('Qwen/Qwen2.5-7B-Instruct');
+  const [creatingAgent, setCreatingAgent] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const selectedAgent = useMemo(
     () => agents.find(a => a.id === selectedAgentId) || null,
@@ -431,7 +456,7 @@ export default function AdminDashboard() {
     listAgentTemplates()
       .then(items => {
         if (!alive) return;
-        if (items.length > 0) setAgents(items);
+        setAgents(mergeDefaultAndSavedAgents(items));
         setLoadError(null);
       })
       .catch(error => {
@@ -439,6 +464,19 @@ export default function AdminDashboard() {
         if (alive) setLoadError('后端模板暂时不可用，当前显示本地默认模板');
       })
 
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    getSystemConfig()
+      .then(config => {
+        if (!alive) return;
+        if (config.llm_model_default) setDefaultModel(config.llm_model_default);
+      })
+      .catch(error => {
+        console.error('Failed to load default model', error);
+      });
     return () => { alive = false; };
   }, []);
 
@@ -521,6 +559,10 @@ export default function AdminDashboard() {
   }, [selectedAgentId, backToDashboard]);
 
   const createAgent = useCallback(async () => {
+    if (creatingAgent) return;
+    setCreatingAgent(true);
+    setActionMessage(null);
+
     const newAgent: AgentData = {
       id: `agent-${Date.now()}`,
       name: '新建智能体',
@@ -528,8 +570,8 @@ export default function AdminDashboard() {
       icon: '🤖',
       color: '#6366f1',
       role: '',
-      systemPrompt: '',
-      model: 'gpt-4o',
+      systemPrompt: '你是一个可靠的研究助手。请根据用户输入完成任务，并用清晰、可验证的方式输出结果。',
+      model: defaultModel,
       temperature: 0.5,
       maxTokens: 2048,
       status: 'draft',
@@ -537,7 +579,20 @@ export default function AdminDashboard() {
       workflow: {
         nodes: [
           { id: 'n1', type: 'start', label: '用户输入', x: 50, y: 150 },
-          { id: 'n2', type: 'llm', label: 'LLM 处理', x: 300, y: 150 },
+          {
+            id: 'n2',
+            type: 'llm',
+            label: 'LLM 处理',
+            x: 300,
+            y: 150,
+            config: {
+              model: defaultModel,
+              temperature: 0.5,
+              max_tokens: 2048,
+              system_prompt: '你是一个可靠的研究助手。请根据用户输入完成任务，并用清晰、可验证的方式输出结果。',
+              inputs: { user_input: '{user_input}' },
+            },
+          },
           { id: 'n3', type: 'reply', label: '返回结果', x: 550, y: 150 },
         ],
         edges: [
@@ -548,16 +603,23 @@ export default function AdminDashboard() {
       lastModified: new Date().toISOString().split('T')[0],
       calls: 0,
     };
-    setAgents(prev => [...prev, newAgent]);
-    openEditor(newAgent.id);
+
     try {
       const saved = await createAgentTemplate(newAgent);
-      setAgents(prev => prev.map(a => a.id === newAgent.id ? saved : a));
+      setAgents(prev => mergeDefaultAndSavedAgents([
+        ...prev.filter(agent => !MOCK_AGENTS.some(item => item.id === agent.id)),
+        saved,
+      ]));
+      setSearchQuery('');
+      setActionMessage('新建智能体已保存到后端');
       openEditor(saved.id);
     } catch (error) {
       console.error('Failed to create agent template', error);
+      setActionMessage('新建失败，请检查后端服务或浏览器控制台');
+    } finally {
+      setCreatingAgent(false);
     }
-  }, [openEditor]);
+  }, [creatingAgent, defaultModel, openEditor]);
 
   const handleLogout = useCallback(() => {
     logout();
@@ -625,6 +687,8 @@ export default function AdminDashboard() {
           <AgentListView
             agents={filteredAgents}
             loadError={loadError}
+            actionMessage={actionMessage}
+            creatingAgent={creatingAgent}
             searchQuery={searchQuery}
             onSearch={setSearchQuery}
             onEdit={openEditor}
@@ -671,10 +735,12 @@ export default function AdminDashboard() {
    ═══════════════════════════════════════════════════════ */
 
 function AgentListView({
-  agents, loadError, searchQuery, onSearch, onEdit, onOrchestrate, onDuplicate, onDelete, onCreate,
+  agents, loadError, actionMessage, creatingAgent, searchQuery, onSearch, onEdit, onOrchestrate, onDuplicate, onDelete, onCreate,
 }: {
   agents: AgentData[];
   loadError: string | null;
+  actionMessage: string | null;
+  creatingAgent: boolean;
   searchQuery: string;
   onSearch: (q: string) => void;
   onEdit: (id: string) => void;
@@ -693,6 +759,11 @@ function AgentListView({
             <p className="text-xs text-gray-400 mt-0.5">
               {loadError || '管理和配置平台中的所有 AI 智能体'}
             </p>
+            {actionMessage && (
+              <p className={`text-xs mt-1 ${actionMessage.includes('失败') ? 'text-red-500' : 'text-emerald-600'}`}>
+                {actionMessage}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <div className="relative">
@@ -706,10 +777,13 @@ function AgentListView({
             </div>
             <button
               onClick={onCreate}
-              className="flex items-center gap-1.5 px-4 h-9 bg-primary text-white text-xs font-medium rounded-xl hover:bg-primary/90 transition-colors shadow-sm"
+              disabled={creatingAgent}
+              className={`flex items-center gap-1.5 px-4 h-9 bg-primary text-white text-xs font-medium rounded-xl hover:bg-primary/90 transition-colors shadow-sm ${
+                creatingAgent ? 'opacity-70 cursor-not-allowed' : ''
+              }`}
             >
               <PlusOutlined style={{ fontSize: '12px' }} />
-              新建智能体
+              {creatingAgent ? '创建中' : '新建智能体'}
             </button>
           </div>
         </div>
@@ -738,13 +812,18 @@ function AgentListView({
           {/* 创建卡片 */}
           <button
             onClick={onCreate}
-            className="group border-2 border-dashed border-gray-200 rounded-2xl p-6 flex flex-col items-center justify-center gap-3 hover:border-primary/40 hover:bg-primary/5 transition-all min-h-[220px]"
+            disabled={creatingAgent}
+            className={`group border-2 border-dashed border-gray-200 rounded-2xl p-6 flex flex-col items-center justify-center gap-3 hover:border-primary/40 hover:bg-primary/5 transition-all min-h-[220px] ${
+              creatingAgent ? 'opacity-70 cursor-not-allowed' : ''
+            }`}
           >
             <div className="w-12 h-12 rounded-2xl bg-gray-100 group-hover:bg-primary/10 flex items-center justify-center transition-colors">
               <PlusOutlined className="text-gray-400 group-hover:text-primary text-xl transition-colors" />
             </div>
             <div className="text-center">
-              <p className="text-sm font-medium text-gray-500 group-hover:text-primary transition-colors">创建新智能体</p>
+              <p className="text-sm font-medium text-gray-500 group-hover:text-primary transition-colors">
+                {creatingAgent ? '正在创建...' : '创建新智能体'}
+              </p>
               <p className="text-[11px] text-gray-400 mt-1">从零开始配置一个 AI 智能体</p>
             </div>
           </button>
@@ -1184,6 +1263,72 @@ function OrchestrationEditor({
     start: '开始节点', llm: 'LLM 节点', tool: '工具节点',
     condition: '条件分支', reply: '回复节点', knowledge: '知识库',
   };
+  const selectedNodeConfig = selectedNode?.config ?? {};
+
+  const buildDefaultNodeConfig = useCallback((type: WorkflowNode['type']): WorkflowNodeConfig => {
+    if (type === 'llm') {
+      return {
+        model: agent.model,
+        temperature: agent.temperature,
+        max_tokens: agent.maxTokens,
+        system_prompt: agent.systemPrompt || agent.role || '你是一个可靠的研究助手。',
+        inputs: { user_input: '{user_input}' },
+      };
+    }
+    if (type === 'tool') {
+      return {
+        tools: agent.skills.filter(skill => skill.enabled).map(skill => skill.id),
+        system_prompt: '根据用户输入判断是否需要调用工具，并输出工具处理后的结论。',
+        inputs: { user_input: '{user_input}' },
+      };
+    }
+    if (type === 'knowledge') {
+      return {
+        tools: ['sk-kb'],
+        query_hint: '围绕用户输入检索本地知识库。',
+        system_prompt: '优先检索知识库，再基于检索结果给出答案。',
+        inputs: { user_input: '{user_input}' },
+      };
+    }
+    if (type === 'condition') {
+      return {
+        condition_note: '在连线上填写分支标签，例如：及格 / 不及格 / 是 / 否。',
+      };
+    }
+    if (type === 'reply') {
+      return {
+        reply_template: '返回上游节点的最终结果。',
+      };
+    }
+    return {};
+  }, [agent.model, agent.temperature, agent.maxTokens, agent.systemPrompt, agent.role, agent.skills]);
+
+  const updateSelectedNode = useCallback((updates: Partial<WorkflowNode>) => {
+    if (!selectedNodeId) return;
+    setNodes(prev => prev.map(node => node.id === selectedNodeId ? { ...node, ...updates } : node));
+  }, [selectedNodeId]);
+
+  const updateSelectedNodeConfig = useCallback((updates: WorkflowNodeConfig) => {
+    if (!selectedNodeId) return;
+    setNodes(prev => prev.map(node => (
+      node.id === selectedNodeId
+        ? { ...node, config: { ...(node.config ?? {}), ...updates } }
+        : node
+    )));
+  }, [selectedNodeId]);
+
+  const toggleSelectedNodeTool = useCallback((toolId: string) => {
+    if (!selectedNodeId) return;
+    setNodes(prev => prev.map(node => {
+      if (node.id !== selectedNodeId) return node;
+      const currentTools = node.config?.tools ?? [];
+      const nextTools = currentTools.includes(toolId)
+        ? currentTools.filter(id => id !== toolId)
+        : [...currentTools, toolId];
+      return { ...node, config: { ...(node.config ?? {}), tools: nextTools } };
+    }));
+  }, [selectedNodeId]);
+
   const getCanvasPos = useCallback((e: React.MouseEvent) => {
     const el = containerRef.current;
     if (!el) return { x: 0, y: 0 };
@@ -1257,12 +1402,13 @@ function OrchestrationEditor({
       label: nodeDefaultLabels[type],
       x: Math.max(0, cx - NODE_W / 2 + (Math.random() - 0.5) * 120),
       y: Math.max(0, cy - NODE_H / 2 + (Math.random() - 0.5) * 80),
+      config: buildDefaultNodeConfig(type),
     };
     setNodes(prev => [...prev, newNode]);
     setSelectedNodeId(newNode.id);
     setSelectedEdgeIdx(null);
     setConnecting(null);
-  }, []);
+  }, [buildDefaultNodeConfig]);
 
   const deleteNode = useCallback((nodeId: string) => {
     setNodes(prev => prev.filter(n => n.id !== nodeId));
@@ -1277,14 +1423,18 @@ function OrchestrationEditor({
 
   const commitLabel = useCallback(() => {
     if (!selectedNodeId) return;
-    setNodes(prev => prev.map(n => n.id === selectedNodeId ? { ...n, label: editLabelText } : n));
+    updateSelectedNode({ label: editLabelText });
     setEditingLabel(false);
-  }, [selectedNodeId, editLabelText]);
+  }, [selectedNodeId, editLabelText, updateSelectedNode]);
 
   const changeNodeType = useCallback((type: WorkflowNode['type']) => {
     if (!selectedNodeId) return;
-    setNodes(prev => prev.map(n => n.id === selectedNodeId ? { ...n, type } : n));
-  }, [selectedNodeId]);
+    setNodes(prev => prev.map(n => (
+      n.id === selectedNodeId
+        ? { ...n, type, config: { ...buildDefaultNodeConfig(type), ...(n.config ?? {}) } }
+        : n
+    )));
+  }, [selectedNodeId, buildDefaultNodeConfig]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -1512,6 +1662,12 @@ function OrchestrationEditor({
                     </div>
                     <div className="px-3 pb-2.5">
                       <p className="text-xs font-semibold text-gray-700 truncate">{node.label}</p>
+                      {node.type === 'llm' && node.config?.model && (
+                        <p className="text-[9px] text-gray-400 truncate mt-0.5">{String(node.config.model)}</p>
+                      )}
+                      {node.type === 'tool' && node.config?.tools && node.config.tools.length > 0 && (
+                        <p className="text-[9px] text-gray-400 truncate mt-0.5">{node.config.tools.length} 个工具</p>
+                      )}
                     </div>
                   </div>
 
@@ -1599,6 +1755,161 @@ function OrchestrationEditor({
                     })}
                   </div>
                 </div>
+
+                {selectedNode.type === 'llm' && (
+                  <div className="space-y-4 pt-2 border-t border-gray-100">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">身份定义 / 系统提示词</label>
+                      <textarea
+                        value={String(selectedNodeConfig.system_prompt ?? '')}
+                        onChange={e => updateSelectedNodeConfig({ system_prompt: e.target.value })}
+                        rows={8}
+                        placeholder="定义这个 LLM 节点的角色、任务边界、输出规范..."
+                        className="w-full px-2.5 py-2 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all resize-none leading-relaxed"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">模型</label>
+                      <input
+                        list="node-model-suggestions"
+                        value={String(selectedNodeConfig.model ?? agent.model)}
+                        onChange={e => updateSelectedNodeConfig({ model: e.target.value })}
+                        className="w-full h-8 px-2.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-primary/40 transition-all"
+                      />
+                      <datalist id="node-model-suggestions">
+                        {MODEL_SUGGESTIONS.map(model => <option key={model} value={model} />)}
+                      </datalist>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">温度</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="2"
+                          step="0.1"
+                          value={Number(selectedNodeConfig.temperature ?? agent.temperature)}
+                          onChange={e => updateSelectedNodeConfig({ temperature: Number(e.target.value) })}
+                          className="w-full h-8 px-2.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-primary/40 transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">Max Tokens</label>
+                        <input
+                          type="number"
+                          min="128"
+                          step="128"
+                          value={Number(selectedNodeConfig.max_tokens ?? agent.maxTokens)}
+                          onChange={e => updateSelectedNodeConfig({ max_tokens: Number(e.target.value) })}
+                          className="w-full h-8 px-2.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-primary/40 transition-all"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">输出格式</label>
+                      <input
+                        value={String(selectedNodeConfig.output_format ?? '')}
+                        onChange={e => updateSelectedNodeConfig({ output_format: e.target.value })}
+                        placeholder="如：一句话 / Markdown / JSON 字段..."
+                        className="w-full h-8 px-2.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-primary/40 transition-all"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {selectedNode.type === 'tool' && (
+                  <div className="space-y-4 pt-2 border-t border-gray-100">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">工具调用策略</label>
+                      <textarea
+                        value={String(selectedNodeConfig.system_prompt ?? '')}
+                        onChange={e => updateSelectedNodeConfig({ system_prompt: e.target.value })}
+                        rows={4}
+                        placeholder="说明什么时候调用工具，以及如何整理工具结果..."
+                        className="w-full px-2.5 py-2 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all resize-none leading-relaxed"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">可调用工具</label>
+                      <div className="space-y-1.5">
+                        {SKILL_TEMPLATES.map(skill => {
+                          const checked = (selectedNodeConfig.tools ?? []).includes(skill.id);
+                          return (
+                            <button
+                              key={skill.id}
+                              onClick={() => toggleSelectedNodeTool(skill.id)}
+                              className={`w-full flex items-center gap-2 p-2 rounded-lg border text-left transition-all ${
+                                checked ? 'border-primary/40 bg-primary/5' : 'border-gray-200 hover:border-gray-300'
+                              }`}
+                            >
+                              <span className="text-xs text-primary">{SKILL_TYPE_ICON[skill.type]}</span>
+                              <span className="flex-1 min-w-0">
+                                <span className="block text-[11px] font-medium text-gray-700 truncate">{skill.name}</span>
+                                <span className="block text-[9px] text-gray-400 truncate">{skill.description}</span>
+                              </span>
+                              <span className={`w-3.5 h-3.5 rounded border ${checked ? 'bg-primary border-primary' : 'border-gray-300'}`} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {selectedNode.type === 'knowledge' && (
+                  <div className="space-y-4 pt-2 border-t border-gray-100">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">检索任务说明</label>
+                      <textarea
+                        value={String(selectedNodeConfig.query_hint ?? '')}
+                        onChange={e => updateSelectedNodeConfig({ query_hint: e.target.value })}
+                        rows={4}
+                        placeholder="说明要从知识库检索什么信息..."
+                        className="w-full px-2.5 py-2 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all resize-none leading-relaxed"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">回答身份定义</label>
+                      <textarea
+                        value={String(selectedNodeConfig.system_prompt ?? '')}
+                        onChange={e => updateSelectedNodeConfig({ system_prompt: e.target.value })}
+                        rows={5}
+                        placeholder="定义检索后如何分析和回答..."
+                        className="w-full px-2.5 py-2 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all resize-none leading-relaxed"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {selectedNode.type === 'condition' && (
+                  <div className="space-y-3 pt-2 border-t border-gray-100">
+                    <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl">
+                      <p className="text-[11px] text-amber-700 leading-relaxed">
+                        条件节点根据上一节点输出的路由决策选择连线。点击连线后，在“连线标签”里填写可匹配的条件，例如：及格、不及格、是、否。
+                      </p>
+                    </div>
+                    <textarea
+                      value={String(selectedNodeConfig.condition_note ?? '')}
+                      onChange={e => updateSelectedNodeConfig({ condition_note: e.target.value })}
+                      rows={3}
+                      placeholder="补充这个条件节点的判定说明..."
+                      className="w-full px-2.5 py-2 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all resize-none leading-relaxed"
+                    />
+                  </div>
+                )}
+
+                {selectedNode.type === 'reply' && (
+                  <div className="space-y-3 pt-2 border-t border-gray-100">
+                    <label className="block text-[10px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">回复模板</label>
+                    <textarea
+                      value={String(selectedNodeConfig.reply_template ?? '')}
+                      onChange={e => updateSelectedNodeConfig({ reply_template: e.target.value })}
+                      rows={4}
+                      placeholder="描述最终回复应如何组织，例如保留结论、引用来源、列出步骤..."
+                      className="w-full px-2.5 py-2 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all resize-none leading-relaxed"
+                    />
+                  </div>
+                )}
               </div>
             </div>
           ) : selectedEdgeIdx !== null && edges[selectedEdgeIdx] ? (

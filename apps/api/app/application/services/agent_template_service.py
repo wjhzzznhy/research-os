@@ -195,6 +195,8 @@ class AgentTemplateService:
             tools = ["local_knowledge"]
         elif node_type == "tool":
             tools = enabled_tools
+        if config.get("tools"):
+            tools = AgentTemplateService._map_tool_ids(config.get("tools") or [])
 
         system_prompt = AgentTemplateService._node_system_prompt(node_type, label, template, config)
         return {
@@ -205,7 +207,7 @@ class AgentTemplateService:
                 "model": config.get("model") or template.model,
                 "temperature": config.get("temperature") or template.temperature,
                 "max_tokens": config.get("max_tokens") or template.max_tokens,
-                "system_prompt": config.get("system_prompt") or system_prompt,
+                "system_prompt": system_prompt,
                 "tools": config.get("tools") or tools,
                 "inputs": config.get("inputs") or {"user_input": "{user_input}"},
             },
@@ -228,11 +230,19 @@ class AgentTemplateService:
             return inline_prompt
 
         base_prompt = template.system_prompt or template.role or "你是一个可靠的研究助手。"
+        output_format = config.get("output_format")
+        output_rule = f"\n\n输出格式要求：{output_format}" if output_format else ""
         if node_type == "knowledge":
-            return f"{base_prompt}\n\n当前节点：{label}。请优先检索本地知识库，并基于检索结果回答。"
+            query_hint = config.get("query_hint")
+            query_rule = f"\n检索任务说明：{query_hint}" if query_hint else ""
+            return f"{base_prompt}\n\n当前节点：{label}。请优先检索本地知识库，并基于检索结果回答。{query_rule}{output_rule}"
         if node_type == "tool":
-            return f"{base_prompt}\n\n当前节点：{label}。请在需要时调用已配置工具完成任务，并给出结构化结果。"
-        return f"{base_prompt}\n\n当前节点：{label}。请完成该节点职责，并把结果传递给后续节点。"
+            node_prompt = config.get("system_prompt")
+            tool_rule = f"\n工具调用策略：{node_prompt}" if node_prompt else ""
+            return f"{base_prompt}\n\n当前节点：{label}。请在需要时调用已配置工具完成任务，并给出结构化结果。{tool_rule}{output_rule}"
+        node_prompt = config.get("system_prompt")
+        prompt_body = node_prompt or base_prompt
+        return f"{prompt_body}\n\n当前节点：{label}。请完成该节点职责，并把结果传递给后续节点。{output_rule}"
 
     @staticmethod
     def _enabled_tool_names(skills: list[dict[str, Any]]) -> list[str]:
@@ -241,6 +251,15 @@ class AgentTemplateService:
             if not skill.get("enabled", True):
                 continue
             mapped_name = AgentTemplateService._map_skill_name(skill)
+            if mapped_name and mapped_name not in names:
+                names.append(mapped_name)
+        return names
+
+    @staticmethod
+    def _map_tool_ids(tool_ids: list[Any]) -> list[str]:
+        names: list[str] = []
+        for tool_id in tool_ids:
+            mapped_name = AgentTemplateService._map_skill_name({"id": str(tool_id), "name": str(tool_id)})
             if mapped_name and mapped_name not in names:
                 names.append(mapped_name)
         return names
